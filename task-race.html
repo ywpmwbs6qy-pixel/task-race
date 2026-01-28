@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111111"/>
+  <title>Task Race</title>
+  <style>
+    :root{
+      --bg:#0f1115; --card:#171a21; --muted:#9aa3b2; --text:#e9eef7;
+      --accent:#6ee7ff; --good:#4ade80; --bad:#fb7185; --line:#262b36;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial;
+      background:linear-gradient(180deg,#0b0d12, #0f1115 30%, #0f1115);
+      color:var(--text);
+      padding: max(16px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+    }
+    h1{font-size:20px; margin: 4px 0 14px; letter-spacing:.2px}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .grid{display:grid; grid-template-columns: 1fr; gap:12px; max-width:900px; margin:0 auto}
+    .card{
+      background:rgba(23,26,33,.95);
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .card h2{font-size:14px; margin:0 0 10px; color:#cfd6e6; font-weight:650; letter-spacing:.2px}
+    .muted{color:var(--muted); font-size:12px}
+    input, select{
+      width:auto; background:#0f131b; border:1px solid var(--line);
+      color:var(--text); border-radius:10px; padding:10px 10px; outline:none;
+    }
+    input[type="number"]{width:110px}
+    input[type="text"]{flex:1; min-width:180px}
+    button{
+      border:1px solid var(--line);
+      background:#101522;
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      font-weight:650;
+      letter-spacing:.2px;
+      cursor:pointer;
+    }
+    button.primary{
+      background: linear-gradient(135deg, rgba(110,231,255,.22), rgba(110,231,255,.05));
+      border-color: rgba(110,231,255,.45);
+    }
+    button.good{border-color: rgba(74,222,128,.55); background: rgba(74,222,128,.12)}
+    button.bad{border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.12)}
+    button:disabled{opacity:.5; cursor:not-allowed}
+    .pill{
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#0f131b;
+      font-size:12px;
+      color:#cfd6e6;
+    }
+    .list{display:flex; flex-direction:column; gap:8px}
+    .item{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:10px; border:1px solid var(--line); border-radius:12px;
+      background:#0f131b;
+    }
+    .item .left{display:flex; flex-direction:column; gap:2px}
+    .name{font-weight:750}
+    .tiny{font-size:12px; color:var(--muted)}
+    .controls{display:flex; gap:8px; align-items:center}
+    .hr{height:1px; background:var(--line); margin:10px 0}
+    .big{
+      font-size:28px; font-weight:850; letter-spacing:.4px;
+      display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+    }
+    .big span{font-size:12px; color:var(--muted); font-weight:650}
+    .bar{
+      height:10px; border-radius:999px; background:#0f131b; border:1px solid var(--line);
+      overflow:hidden;
+    }
+    .bar > div{
+      height:100%; width:0%;
+      background: linear-gradient(90deg, rgba(110,231,255,.9), rgba(74,222,128,.85));
+      transition: width .2s linear;
+    }
+    .ahead{color:var(--good)}
+    .behind{color:var(--bad)}
+    .twoCol{display:grid; grid-template-columns:1fr; gap:10px}
+    @media (min-width: 860px){ .twoCol{grid-template-columns: 1fr 1fr} }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <h1>Task Race</h1>
+
+    <div class="twoCol">
+      <div class="card">
+        <h2>Task Library (saved on this phone)</h2>
+
+        <div class="row">
+          <input id="newTaskName" type="text" placeholder="Task name (e.g., 'Unload dishwasher')" />
+          <input id="newTaskMins" type="number" min="0" step="0.5" placeholder="Minutes" />
+          <button id="addToLibraryBtn" class="primary">Add to Library</button>
+        </div>
+        <div class="muted" style="margin-top:8px">
+          Tip: durations can be decimals (e.g., 2.5 minutes).
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content:space-between">
+          <div class="pill" id="libraryCountPill">0 tasks</div>
+          <div class="row">
+            <button id="clearLibraryBtn" class="bad">Clear Library</button>
+          </div>
+        </div>
+
+        <div class="list" id="libraryList" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <h2>Today’s Run List</h2>
+        <div class="muted">Pick tasks from your library, reorder them, then race.</div>
+
+        <div class="hr"></div>
+
+        <div class="row" style="justify-content:space-between">
+          <div class="pill" id="runStatsPill">0 tasks • 0:00 total</div>
+          <div class="row">
+            <button id="clearRunBtn" class="bad">Clear Run</button>
+          </div>
+        </div>
+
+        <div class="list" id="runList" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Race Mode</h2>
+
+      <div class="row" style="justify-content:space-between; gap:12px">
+        <div>
+          <div class="muted">Master countdown</div>
+          <div class="big" id="masterTime">0:00 <span id="masterMeta"></span></div>
+          <div class="bar"><div id="masterBar"></div></div>
+        </div>
+
+        <div>
+          <div class="muted">Time saved</div>
+          <div class="big"><span class="ahead" id="savedTime">0:00</span></div>
+          <div class="muted" id="paceNote"></div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div style="min-width:260px; flex:1">
+          <div class="muted">Current task</div>
+          <div class="big" id="taskName">—</div>
+          <div class="row" style="gap:12px">
+            <div class="pill" id="taskIndexPill">0 / 0</div>
+            <div class="pill" id="taskTargetPill">Target: 0:00</div>
+          </div>
+        </div>
+
+        <div style="min-width:260px">
+          <div class="muted">Task countdown</div>
+          <div class="big" id="taskTime">0:00</div>
+          <div class="row" style="gap:8px; margin-top:8px">
+            <button id="startBtn" class="primary">Start</button>
+            <button id="pauseBtn">Pause</button>
+            <button id="doneBtn" class="good">Done</button>
+            <button id="skipBtn" class="bad">Skip</button>
+            <button id="resetRaceBtn">Reset</button>
+          </div>
+          <div class="muted" style="margin-top:8px">
+            “Done” early banks the saved time against the master countdown.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="muted" style="text-align:center">
+      Data is stored locally on your phone. No account, no cloud.
+    </div>
+  </div>
+
+<script>
+(() => {
+  const LS_LIBRARY = "taskrace_library_v1";
+  const LS_RUN = "taskrace_run_v1";
+
+  /** @type {{id:string,name:string,mins:number}[]} */
+  let library = [];
+  /** @type {{id:string,name:string,mins:number}[]} */
+  let run = [];
+
+  // Race state
+  let race = {
+    running:false,
+    paused:false,
+    interval:null,
+    currentIndex:0,
+    taskRemainingSec:0,
+    masterRemainingSec:0,
+    masterTotalSec:0,
+    savedSec:0,
+    startedAt:null
+  };
+
+  const el = (id) => document.getElementById(id);
+
+  function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
+
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+  function fmt(sec){
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec/60);
+    const s = sec%60;
+    return `${m}:${String(s).padStart(2,"0")}`;
+  }
+
+  function load(){
+    try{ library = JSON.parse(localStorage.getItem(LS_LIBRARY) || "[]"); } catch { library=[]; }
+    try{ run = JSON.parse(localStorage.getItem(LS_RUN) || "[]"); } catch { run=[]; }
+  }
+
+  function save(){
+    localStorage.setItem(LS_LIBRARY, JSON.stringify(library));
+    localStorage.setItem(LS_RUN, JSON.stringify(run));
+  }
+
+  function totalRunSec(){
+    return run.reduce((sum,t)=> sum + Math.round((t.mins||0)*60), 0);
+  }
+
+  function renderLibrary(){
+    el("libraryCountPill").textContent = `${library.length} task${library.length===1?"":"s"}`;
+    const wrap = el("libraryList");
+    wrap.innerHTML = "";
+    if(library.length === 0){
+      wrap.innerHTML = `<div class="muted">No tasks yet. Add one above.</div>`;
+      return;
+    }
+    library
+      .slice()
+      .sort((a,b)=> a.name.localeCompare(b.name))
+      .forEach(t => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div class="left">
+            <div class="name">${escapeHtml(t.name)}</div>
+            <div class="tiny">${t.mins} min</div>
+          </div>
+          <div class="controls">
+            <button data-add="${t.id}" class="primary">Add</button>
+            <button data-del="${t.id}" class="bad">Delete</button>
+          </div>
+        `;
+        wrap.appendChild(div);
+      });
+
+    wrap.querySelectorAll("button[data-add]").forEach(b => {
+      b.addEventListener("click", () => {
+        const id = b.getAttribute("data-add");
+        const t = library.find(x => x.id===id);
+        if(!t) return;
+        run.push({ ...t, id: uid() }); // allow duplicates in run list
+        save();
+        renderRun();
+        if(!race.running) updateRacePreview();
+      });
+    });
+
+    wrap.querySelectorAll("button[data-del]").forEach(b => {
+      b.addEventListener("click", () => {
+        const id = b.getAttribute("data-del");
+        library = library.filter(x => x.id !== id);
+        save();
+        renderLibrary();
+      });
+    });
+  }
+
+  function renderRun(){
+    const total = totalRunSec();
+    el("runStatsPill").textContent = `${run.length} task${run.length===1?"":"s"} • ${fmt(total)} total`;
+    const wrap = el("runList");
+    wrap.innerHTML = "";
+    if(run.length === 0){
+      wrap.innerHTML = `<div class="muted">Add tasks from the library to build your run.</div>`;
+      return;
+    }
+
+    run.forEach((t, idx) => {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `
+        <div class="left">
+          <div class="name">${String.fromCharCode(65 + (idx%26))}. ${escapeHtml(t.name)}</div>
+          <div class="tiny">${t.mins} min</div>
+        </div>
+        <div class="controls">
+          <button data-up="${idx}">↑</button>
+          <button data-down="${idx}">↓</button>
+          <button data-remove="${idx}" class="bad">Remove</button>
+        </div>
+      `;
+      wrap.appendChild(div);
+    });
+
+    wrap.querySelectorAll("button[data-up]").forEach(b => {
+      b.addEventListener("click", () => {
+        const i = Number(b.getAttribute("data-up"));
+        if(i<=0) return;
+        [run[i-1], run[i]] = [run[i], run[i-1]];
+        save(); renderRun();
+        if(!race.running) updateRacePreview();
+      });
+    });
+    wrap.querySelectorAll("button[data-down]").forEach(b => {
+      b.addEventListener("click", () => {
+        const i = Number(b.getAttribute("data-down"));
+        if(i>=run.length-1) return;
+        [run[i], run[i+1]] = [run[i+1], run[i]];
+        save(); renderRun();
+        if(!race.running) updateRacePreview();
+      });
+    });
+    wrap.querySelectorAll("button[data-remove]").forEach(b => {
+      b.addEventListener("click", () => {
+        const i = Number(b.getAttribute("data-remove"));
+        run.splice(i,1);
+        save(); renderRun();
+        if(!race.running) updateRacePreview();
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function setButtons(){
+    const hasRun = run.length > 0;
+    el("startBtn").disabled = !hasRun || race.running;
+    el("pauseBtn").disabled = !race.running;
+    el("doneBtn").disabled = !race.running;
+    el("skipBtn").disabled = !race.running;
+    el("resetRaceBtn").disabled = !hasRun;
+  }
+
+  function currentTask(){
+    return run[race.currentIndex] || null;
+  }
+
+  function updateRacePreview(){
+    // show what master would be if started now
+    const total = totalRunSec();
+    el("masterTime").textContent = fmt(total);
+    el("masterMeta").textContent = run.length ? `(${run.length} tasks)` : "";
+    el("savedTime").textContent = fmt(0);
+    el("paceNote").textContent = "";
+    el("taskName").textContent = run.length ? run[0].name : "—";
+    el("taskIndexPill").textContent = run.length ? `1 / ${run.length}` : "0 / 0";
+    el("taskTargetPill").textContent = run.length ? `Target: ${fmt(run[0].mins*60)}` : "Target: 0:00";
+    el("taskTime").textContent = run.length ? fmt(run[0].mins*60) : "0:00";
+    el("masterBar").style.width = "0%";
+    setButtons();
+  }
+
+  function startRace(){
+    if(run.length === 0) return;
+
+    race.running = true;
+    race.paused = false;
+    race.currentIndex = clamp(race.currentIndex, 0, run.length-1);
+    race.savedSec = 0;
+
+    race.masterTotalSec = totalRunSec();
+    race.masterRemainingSec = race.masterTotalSec;
+
+    const t = currentTask();
+    race.taskRemainingSec = Math.round(t.mins*60);
+
+    race.startedAt = Date.now();
+
+    tick(true);
+    race.interval = setInterval(() => tick(false), 250);
+    setButtons();
+  }
+
+  function pauseRace(){
+    if(!race.running) return;
+    race.paused = !race.paused;
+    el("pauseBtn").textContent = race.paused ? "Resume" : "Pause";
+  }
+
+  function resetRace(){
+    if(race.interval) clearInterval(race.interval);
+    race = {
+      running:false, paused:false, interval:null,
+      currentIndex:0, taskRemainingSec:0,
+      masterRemainingSec:0, masterTotalSec:0,
+      savedSec:0, startedAt:null
+    };
+    el("pauseBtn").textContent = "Pause";
+    updateRacePreview();
+  }
+
+  function nextTask(){
+    race.currentIndex++;
+    if(race.currentIndex >= run.length){
+      finishRace();
+      return;
+    }
+    const t = currentTask();
+    race.taskRemainingSec = Math.round(t.mins*60);
+  }
+
+  function doneTask(){
+    if(!race.running) return;
+    // bank whatever remains on the task
+    const saved = Math.max(0, Math.round(race.taskRemainingSec));
+    race.savedSec += saved;
+
+    // reduce master remaining by (time spent so far on task):
+    // But since we're counting down master in real time, we simply move on.
+    // The "banked" time is represented as savedSec, and in UI we show effective remaining.
+    nextTask();
+    tick(true);
+  }
+
+  function skipTask(){
+    if(!race.running) return;
+    // no savings granted; move on
+    nextTask();
+    tick(true);
+  }
+
+  function finishRace(){
+    if(race.interval) clearInterval(race.interval);
+    race.running = false;
+    setButtons();
+    el("taskName").textContent = "Done 🎉";
+    el("taskTime").textContent = "0:00";
+    el("taskIndexPill").textContent = `${run.length} / ${run.length}`;
+    el("taskTargetPill").textContent = "Target: 0:00";
+    el("pauseBtn").textContent = "Pause";
+  }
+
+  function tick(force){
+    if(!race.running) return;
+
+    if(!race.paused){
+      const now = Date.now();
+      // real elapsed since last tick? Use 250ms interval; decrement using delta
+      if(!race._lastTick) race._lastTick = now;
+      const deltaSec = (now - race._lastTick) / 1000;
+      race._lastTick = now;
+
+      race.masterRemainingSec -= deltaSec;
+      race.taskRemainingSec -= deltaSec;
+    } else if(force){
+      // allow UI refresh
+    }
+
+    // If task hits zero, auto-advance
+    if(!race.paused && race.taskRemainingSec <= 0){
+      race.taskRemainingSec = 0;
+      nextTask();
+    }
+
+    // If master hits zero, stop (even if tasks remain)
+    if(!race.paused && race.masterRemainingSec <= 0){
+      race.masterRemainingSec = 0;
+      // You can still have tasks left; show "behind"
+      // We'll keep running until tasks end, but master stays at 0.
+    }
+
+    // Update UI
+    const t = currentTask();
+    if(t){
+      el("taskName").textContent = t.name;
+      el("taskIndexPill").textContent = `${race.currentIndex+1} / ${run.length}`;
+      el("taskTargetPill").textContent = `Target: ${fmt(t.mins*60)}`;
+      el("taskTime").textContent = fmt(race.taskRemainingSec);
+    }
+
+    // Effective master remaining is masterRemaining - saved
+    const effectiveRemaining = Math.max(0, Math.round(race.masterRemainingSec - race.savedSec));
+    const masterShown = effectiveRemaining;
+    el("masterTime").textContent = fmt(masterShown);
+
+    const total = Math.max(1, Math.round(race.masterTotalSec));
+    const done = clamp((total - masterShown) / total, 0, 1);
+    el("masterBar").style.width = `${(done*100).toFixed(1)}%`;
+
+    el("savedTime").textContent = fmt(race.savedSec);
+
+    // Pace note: ahead/behind relative to expected (i.e., savings)
+    const aheadBy = race.savedSec;
+    if(aheadBy > 0){
+      el("paceNote").innerHTML = `Ahead by <span class="ahead">${fmt(aheadBy)}</span>`;
+    } else {
+      el("paceNote").textContent = "";
+    }
+
+    // If tasks are all done
+    if(race.currentIndex >= run.length){
+      finishRace();
+    }
+  }
+
+  // Wire up controls
+  el("addToLibraryBtn").addEventListener("click", () => {
+    const name = el("newTaskName").value.trim();
+    const mins = Number(el("newTaskMins").value);
+    if(!name) return alert("Task name?");
+    if(!isFinite(mins) || mins <= 0) return alert("Minutes must be > 0.");
+    library.push({ id: uid(), name, mins });
+    el("newTaskName").value = "";
+    el("newTaskMins").value = "";
+    save();
+    renderLibrary();
+  });
+
+  el("clearLibraryBtn").addEventListener("click", () => {
+    if(!confirm("Clear your entire task library?")) return;
+    library = [];
+    save();
+    renderLibrary();
+  });
+
+  el("clearRunBtn").addEventListener("click", () => {
+    run = [];
+    save();
+    renderRun();
+    resetRace();
+  });
+
+  el("startBtn").addEventListener("click", () => startRace());
+  el("pauseBtn").addEventListener("click", () => pauseRace());
+  el("doneBtn").addEventListener("click", () => doneTask());
+  el("skipBtn").addEventListener("click", () => skipTask());
+  el("resetRaceBtn").addEventListener("click", () => resetRace());
+
+  // Init
+  load();
+  renderLibrary();
+  renderRun();
+  updateRacePreview();
+
+})();
+</script>
+</body>
+</html>
