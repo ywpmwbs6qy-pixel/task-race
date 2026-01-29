@@ -61,34 +61,63 @@
       color:#cfd6e6;
     }
     .list{display:flex; flex-direction:column; gap:8px}
+
+    /* 25% thinner rows: was padding 10px -> now 7px */
     .item{
       display:flex; align-items:center; justify-content:space-between; gap:10px;
-      padding:10px; border:1px solid var(--line); border-radius:12px;
+      padding:7px 10px;
+      border:1px solid var(--line); border-radius:12px;
       background:#0f131b;
     }
+
     .item .left{display:flex; flex-direction:column; gap:2px}
     .name{font-weight:750}
     .tiny{font-size:12px; color:var(--muted)}
     .controls{display:flex; gap:8px; align-items:center}
     .hr{height:1px; background:var(--line); margin:10px 0}
+
     .big{
       font-size:28px; font-weight:850; letter-spacing:.4px;
       display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
     }
     .big span{font-size:12px; color:var(--muted); font-weight:650}
+
+    /* “longer bar” feel: thicker + full-width block */
     .bar{
-      height:10px; border-radius:999px; background:#0f131b; border:1px solid var(--line);
+      height:14px;
+      border-radius:999px;
+      background:#0f131b;
+      border:1px solid var(--line);
       overflow:hidden;
+      width:100%;
+      margin-top:8px;
     }
     .bar > div{
-      height:100%; width:0%;
+      height:100%;
+      width:0%;
       background: linear-gradient(90deg, rgba(110,231,255,.9), rgba(74,222,128,.85));
       transition: width .2s linear;
     }
+
     .ahead{color:var(--good)}
     .behind{color:var(--bad)}
+
     .twoCol{display:grid; grid-template-columns:1fr; gap:10px}
     @media (min-width: 860px){ .twoCol{grid-template-columns: 1fr 1fr} }
+
+    .raceTop{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+    }
+    @media (min-width: 860px){
+      .raceTop{
+        grid-template-columns: 1fr 1.3fr 1fr 1fr;
+        align-items:end;
+      }
+    }
+
+    .label{font-size:12px; color:var(--muted); margin-bottom:4px}
   </style>
 </head>
 <body>
@@ -140,17 +169,31 @@
     <div class="card">
       <h2>Race Mode</h2>
 
-      <div class="row" style="justify-content:space-between; gap:12px">
+      <!-- Estimated | Master | Time Ahead | Actual -->
+      <div class="raceTop">
         <div>
-          <div class="muted">Master countdown</div>
+          <div class="label">Estimated time</div>
+          <div class="big" id="estimatedTime">0:00</div>
+          <div class="muted" id="targetEndLine">Target end: —</div>
+<div class="muted" id="projectedEndLine">Projected end: —</div>
+
+        </div>
+
+        <div>
+          <div class="label">Master countdown</div>
           <div class="big" id="masterTime">0:00 <span id="masterMeta"></span></div>
           <div class="bar"><div id="masterBar"></div></div>
         </div>
 
         <div>
-          <div class="muted">Time saved</div>
-          <div class="big"><span class="ahead" id="savedTime">0:00</span></div>
-          <div class="muted" id="paceNote"></div>
+          <div class="label">Time ahead</div>
+          <div class="big"><span class="ahead" id="timeAhead">0:00</span></div>
+        </div>
+
+        <div>
+          <div class="label">Actual time</div>
+          <div class="big" id="actualTime">0:00</div>
+          <div class="muted" id="actualEndLine">Actual end: —</div>
         </div>
       </div>
 
@@ -177,7 +220,7 @@
             <button id="resetRaceBtn">Reset</button>
           </div>
           <div class="muted" style="margin-top:8px">
-            “Done” early banks the saved time against the master countdown.
+            “Done” early banks the time you saved into “Time ahead.”
           </div>
         </div>
       </div>
@@ -207,14 +250,17 @@
     taskRemainingSec:0,
     masterRemainingSec:0,
     masterTotalSec:0,
-    savedSec:0,
-    startedAt:null
+    savedSec:0,              // “time ahead”
+    actualElapsedSec:0,      // actual time spent (excluding pauses)
+    startedAt:null,
+    targetEndAt:null,
+    actualEndAt:null,
+    _lastTick:null
   };
 
   const el = (id) => document.getElementById(id);
 
   function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
-
   function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
   function fmt(sec){
@@ -222,6 +268,12 @@
     const m = Math.floor(sec/60);
     const s = sec%60;
     return `${m}:${String(s).padStart(2,"0")}`;
+  }
+
+  function fmtClock(ms){
+    if(!ms) return "—";
+    const d = new Date(ms);
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
 
   function load(){
@@ -302,7 +354,7 @@
       div.className = "item";
       div.innerHTML = `
         <div class="left">
-          <div class="name">${String.fromCharCode(65 + (idx%26))}. ${escapeHtml(t.name)}</div>
+          <div class="name">${idx+1}. ${escapeHtml(t.name)}</div>
           <div class="tiny">${t.mins} min</div>
         </div>
         <div class="controls">
@@ -365,16 +417,23 @@
   }
 
   function updateRacePreview(){
-    // show what master would be if started now
     const total = totalRunSec();
-    el("masterTime").textContent = fmt(total);
+
+    el("estimatedTime").textContent = fmt(total);
+    el("masterTime").childNodes[0].textContent = fmt(total) + " ";
     el("masterMeta").textContent = run.length ? `(${run.length} tasks)` : "";
-    el("savedTime").textContent = fmt(0);
-    el("paceNote").textContent = "";
+
+    el("timeAhead").textContent = fmt(0);
+    el("actualTime").textContent = fmt(0);
+
+    el("targetEndLine").textContent = "Target end: —";
+    el("actualEndLine").textContent = "Actual end: —";
+
     el("taskName").textContent = run.length ? run[0].name : "—";
     el("taskIndexPill").textContent = run.length ? `1 / ${run.length}` : "0 / 0";
     el("taskTargetPill").textContent = run.length ? `Target: ${fmt(run[0].mins*60)}` : "Target: 0:00";
     el("taskTime").textContent = run.length ? fmt(run[0].mins*60) : "0:00";
+
     el("masterBar").style.width = "0%";
     setButtons();
   }
@@ -386,6 +445,7 @@
     race.paused = false;
     race.currentIndex = clamp(race.currentIndex, 0, run.length-1);
     race.savedSec = 0;
+    race.actualElapsedSec = 0;
 
     race.masterTotalSec = totalRunSec();
     race.masterRemainingSec = race.masterTotalSec;
@@ -394,6 +454,12 @@
     race.taskRemainingSec = Math.round(t.mins*60);
 
     race.startedAt = Date.now();
+    race.targetEndAt = race.startedAt + (race.masterTotalSec * 1000);
+    race.actualEndAt = null;
+    race._lastTick = null;
+
+    el("targetEndLine").textContent = `Target end: ${fmtClock(race.targetEndAt)}`;
+    el("actualEndLine").textContent = "Actual end: —";
 
     tick(true);
     race.interval = setInterval(() => tick(false), 250);
@@ -404,15 +470,26 @@
     if(!race.running) return;
     race.paused = !race.paused;
     el("pauseBtn").textContent = race.paused ? "Resume" : "Pause";
+    // reset tick reference so we don't “jump” when resuming
+    if(!race.paused) race._lastTick = null;
   }
 
   function resetRace(){
     if(race.interval) clearInterval(race.interval);
     race = {
-      running:false, paused:false, interval:null,
-      currentIndex:0, taskRemainingSec:0,
-      masterRemainingSec:0, masterTotalSec:0,
-      savedSec:0, startedAt:null
+      running:false,
+      paused:false,
+      interval:null,
+      currentIndex:0,
+      taskRemainingSec:0,
+      masterRemainingSec:0,
+      masterTotalSec:0,
+      savedSec:0,
+      actualElapsedSec:0,
+      startedAt:null,
+      targetEndAt:null,
+      actualEndAt:null,
+      _lastTick:null
     };
     el("pauseBtn").textContent = "Pause";
     updateRacePreview();
@@ -430,20 +507,14 @@
 
   function doneTask(){
     if(!race.running) return;
-    // bank whatever remains on the task
     const saved = Math.max(0, Math.round(race.taskRemainingSec));
-    race.savedSec += saved;
-
-    // reduce master remaining by (time spent so far on task):
-    // But since we're counting down master in real time, we simply move on.
-    // The "banked" time is represented as savedSec, and in UI we show effective remaining.
+    race.savedSec += saved; // time ahead
     nextTask();
     tick(true);
   }
 
   function skipTask(){
     if(!race.running) return;
-    // no savings granted; move on
     nextTask();
     tick(true);
   }
@@ -451,73 +522,90 @@
   function finishRace(){
     if(race.interval) clearInterval(race.interval);
     race.running = false;
+    race.paused = false;
+    race.actualEndAt = Date.now();
+
+    el("pauseBtn").textContent = "Pause";
+    el("actualEndLine").textContent = `Actual end: ${fmtClock(race.actualEndAt)}`;
+
     setButtons();
     el("taskName").textContent = "Done 🎉";
     el("taskTime").textContent = "0:00";
     el("taskIndexPill").textContent = `${run.length} / ${run.length}`;
     el("taskTargetPill").textContent = "Target: 0:00";
-    el("pauseBtn").textContent = "Pause";
   }
 
   function tick(force){
-    if(!race.running) return;
+    if(!race.running && !force) return;
 
-    if(!race.paused){
+    // Update the “Target end” line live: use current effective remaining to show projected end.
+    // You asked for a clock that tells you when you should end, and updates when you actually ended.
+    // This shows: Target end (fixed) + dynamic projected end implied by master countdown.
+    if(race.running){
+      el("targetEndLine").textContent = `Target end: ${fmtClock(race.targetEndAt)}`;
+el("targetEndLine").textContent = `Target end: ${fmtClock(race.targetEndAt)}`;
+
+    }
+
+    if(race.running && !race.paused){
       const now = Date.now();
-      // real elapsed since last tick? Use 250ms interval; decrement using delta
       if(!race._lastTick) race._lastTick = now;
       const deltaSec = (now - race._lastTick) / 1000;
       race._lastTick = now;
 
       race.masterRemainingSec -= deltaSec;
       race.taskRemainingSec -= deltaSec;
-    } else if(force){
-      // allow UI refresh
+
+      // actual time only counts while running (excluding pauses)
+      race.actualElapsedSec += deltaSec;
     }
 
-    // If task hits zero, auto-advance
-    if(!race.paused && race.taskRemainingSec <= 0){
+    // Auto-advance task if it hits zero
+    if(race.running && !race.paused && race.taskRemainingSec <= 0){
       race.taskRemainingSec = 0;
       nextTask();
     }
 
-    // If master hits zero, stop (even if tasks remain)
-    if(!race.paused && race.masterRemainingSec <= 0){
-      race.masterRemainingSec = 0;
-      // You can still have tasks left; show "behind"
-      // We'll keep running until tasks end, but master stays at 0.
-    }
+    // UI updates
+    const total = Math.max(1, Math.round(race.masterTotalSec || totalRunSec() || 1));
+    const estimated = race.masterTotalSec || totalRunSec();
+    el("estimatedTime").textContent = fmt(estimated);
 
-    // Update UI
+    // Effective remaining accounts for time-ahead “bank”
+    const effectiveRemaining = Math.max(0, Math.round((race.masterRemainingSec || 0) - (race.savedSec || 0)));
+const projectedEndAt = Date.now() + (effectiveRemaining * 1000);
+el("projectedEndLine").textContent = `Projected end: ${fmtClock(projectedEndAt)}`;
+    const masterShown = race.running ? effectiveRemaining : estimated;
+
+    // Master display
+    el("masterTime").childNodes[0].textContent = fmt(masterShown) + " ";
+    el("masterMeta").textContent = run.length ? `(${run.length} tasks)` : "";
+
+    // Time ahead display
+    el("timeAhead").textContent = fmt(race.savedSec || 0);
+
+    // Actual time display
+    el("actualTime").textContent = fmt(race.actualElapsedSec || 0);
+
+    // Progress bar = time taken / total
+    // time taken should be shown on the bar: fill is elapsed portion
+    const elapsed = clamp((race.actualElapsedSec || 0), 0, total);
+    const done = clamp(elapsed / total, 0, 1);
+    el("masterBar").style.width = `${(done*100).toFixed(1)}%`;
+
+    // Current task UI
     const t = currentTask();
     if(t){
       el("taskName").textContent = t.name;
       el("taskIndexPill").textContent = `${race.currentIndex+1} / ${run.length}`;
       el("taskTargetPill").textContent = `Target: ${fmt(t.mins*60)}`;
       el("taskTime").textContent = fmt(race.taskRemainingSec);
+    } else if(!race.running){
+      // preview state handled elsewhere
     }
 
-    // Effective master remaining is masterRemaining - saved
-    const effectiveRemaining = Math.max(0, Math.round(race.masterRemainingSec - race.savedSec));
-    const masterShown = effectiveRemaining;
-    el("masterTime").textContent = fmt(masterShown);
-
-    const total = Math.max(1, Math.round(race.masterTotalSec));
-    const done = clamp((total - masterShown) / total, 0, 1);
-    el("masterBar").style.width = `${(done*100).toFixed(1)}%`;
-
-    el("savedTime").textContent = fmt(race.savedSec);
-
-    // Pace note: ahead/behind relative to expected (i.e., savings)
-    const aheadBy = race.savedSec;
-    if(aheadBy > 0){
-      el("paceNote").innerHTML = `Ahead by <span class="ahead">${fmt(aheadBy)}</span>`;
-    } else {
-      el("paceNote").textContent = "";
-    }
-
-    // If tasks are all done
-    if(race.currentIndex >= run.length){
+    // If tasks completed
+    if(race.running && race.currentIndex >= run.length){
       finishRace();
     }
   }
